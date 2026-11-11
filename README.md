@@ -1,6 +1,10 @@
-# Yuheng-Inference
+# Yuheng: Toward Universal Progress Modeling through In-Context Learning and Semantic Alignment
 
-Yuheng estimates task progress from images. Give it a task instruction, a sequence of reference images with known progress values, and one or more query images. It returns one progress estimate per query, in input order.
+**Primotion Team** · [Project page](https://primotion-ai.github.io/paimon-eval.github.io/) · [Model weights](#models) · [Quick start](#quick-start) · [Python API](#python-api)
+
+Yuheng estimates how much of a robot task has been completed in a given image. Choose keyframes from one successful demonstration and assign a progress value to each milestone. Given the task instruction, those labeled keyframes, and a new image, Yuheng predicts progress on your scale.
+
+The same reference lets you compare attempts that move at different speeds, stop partway through, or use different embodiments, such as a human hand and a robot gripper. This repository provides the inference code for both model sizes and a two-trajectory example.
 
 ## Models
 
@@ -9,62 +13,58 @@ Yuheng estimates task progress from images. Give it a task instruction, a sequen
 | Yuheng-4B | [CarlDegio/Yuheng-4B](https://huggingface.co/CarlDegio/Yuheng-4B) | 17.76 GB |
 | Yuheng-27B | [CarlDegio/Yuheng-27B](https://huggingface.co/CarlDegio/Yuheng-27B) | 104.35 GB |
 
-Both models use the same inference interface. The package includes each model's tokenizer, image processor, chat template, and architecture configuration. Once you download the weights, inference runs offline.
+Both sizes use the same Python API. The package includes their tokenizers, image processors, chat templates, and architecture configurations. Inference runs offline once the weights are on disk.
 
-## Install and download
+## Quick start
 
-Use Python 3.10 or later and an NVIDIA CUDA GPU with FP16 support. Install CUDA builds of PyTorch 2.8.0 and torchvision 0.23.0 compatible with your driver. Then run the following from the repository root.
+Use Python 3.10 or later and an NVIDIA CUDA GPU with FP16 support. Install CUDA builds of PyTorch 2.8.0 and torchvision 0.23.0 compatible with your driver. From the repository root, install the package, download the 4B weights, and run the handoff example.
 
 ```bash
 python -m pip install .
 yuheng-download --model 4b --source official
-```
-
-For either model, choose `official` for Hugging Face or `mirror` for hf-mirror.com. For example, to download 27B from the mirror, run the following command.
-
-```bash
-yuheng-download --model 27b --source mirror
-```
-
-Weights go into `weights/Yuheng-4B/` or `weights/Yuheng-27B/` under the current directory. Use `--output-dir DIR` to choose another parent directory, `--model both` to download both models, or `--dry-run` to check file counts and sizes before downloading. You can also invoke the downloader with `python -m yuheng.download`.
-
-## Run the example
-
-The [example](example/) contains two 32-frame trajectories for “Grab the drink and perform a two-handed handoff.” Download the weights for the model you want to run, then run the script from the repository root.
-
-```bash
 python example_inference.py --model 4b
-# Run the same example with the larger model
-python example_inference.py --model 27b
 ```
 
-The script reads the instruction from [instruction.txt](example/instruction.txt). The first line of [keyframe.txt](example/keyframe.txt) selects trajectory `1-success`. The second lists its reference frames `0, 6, 9, 15, 19, 26, 31`. These seven frames receive progress values equally spaced from 0 to 1 in keyframe order. Both `1-success` and `2-fail` are scored against that reference, including the reference frames themselves.
+The task is “Grab the drink and perform a two-handed handoff.” The script uses seven keyframes from the successful demonstration, assigns them evenly spaced values from 0 to 1, and scores all 32 frames of each attempt on that scale, including the failed handoff.
 
-Results are written to `outputs/Yuheng-4B.json` or `outputs/Yuheng-27B.json`. Each file records the reference frames and their assigned values, followed by the frame index, image path relative to `example/`, and predicted progress for each query. Git ignores `outputs/`. Use `--weights-dir` for weights stored outside the default location, or `--batch-size 1` to reduce memory use.
+The script writes `outputs/Yuheng-4B.json` with the reference indices and assigned values, plus a frame index, image path, and predicted progress for every query. The [task instruction](example/instruction.txt) and [reference keyframe selection](example/keyframe.txt) are included with the example. The first line of the selection file identifies the successful trajectory and the second lists its frame indices.
 
-## Predict progress
+To run the 27B model, use `--model 27b` in both commands. Its results go to `outputs/Yuheng-27B.json`. The downloader stores weights under `weights/Yuheng-4B/` or `weights/Yuheng-27B/`.
+
+### Download options
+
+- `--source mirror` to download from hf-mirror.com.
+- `--dry-run` to check file counts and sizes before downloading.
+- `--model both` to download both models.
+- `--output-dir DIR` to choose a different parent directory. Pass the resulting model directory to the example with `--weights-dir`.
+
+The equivalent module entry point is `python -m yuheng.download`.
+
+## Python API
+
+The example below uses three milestones from the bundled handoff and assigns the middle one a progress value of 0.35. It scores the final image of each attempt against that reference.
 
 ```python
+from pathlib import Path
 from yuheng import Yuheng
 
-predictor = Yuheng("4b")  # Load once and reuse across tasks. Use "27b" for the larger model.
-scores = predictor.predict_progress(
-    instruction="Close the drawer",
-    reference_images=["open.png", "partially_closed.png", "closed.png"],
+example = Path("example")
+model = Yuheng("4b")
+scores = model.predict_progress(
+    instruction=(example / "instruction.txt").read_text().strip(),
+    reference_images=[example / "1-success" / f"{i}.png" for i in (0, 15, 31)],
     reference_progress=[0.0, 0.35, 1.0],
-    query_images=["query_001.png", "query_002.png"],
+    query_images=[example / "1-success/31.png", example / "2-fail/31.png"],
     batch_size=2,
 )
-print(scores)  # list[float], one value per query image in input order
+print(scores)  # One float per query, in input order.
 ```
 
-Pass local image paths or PIL images. Provide 2–11 reference images ordered by progress. Each query is scored independently against the same references, so you can pass every frame of a trajectory in one call. `batch_size` controls how many queries run in each forward pass.
+Pass local image paths or PIL images. Supply 2–11 reference images with one value per image in nondecreasing order. Values must lie in `[0, 1]`, and the last must exceed the first. A reference can cover only part of a task. For example, values of `[0.2, 0.35, 0.8]` give predictions in `[0.2, 0.8]`.
 
-Assign each reference a progress value in `[0, 1]`. Adjacent values can be equal, and the last value must be greater than the first. The references can also cover part of a task. For example, with `[0.2, 0.35, 0.8]`, the model scores each query relative to that segment and returns a value in `[0.2, 0.8]`.
+The model scores each query independently, including images that also appear in the reference. Its progress head applies softmax to the reference logits and returns a weighted mean of the supplied progress values. Reuse the loaded model across tasks and set `batch_size` to control the number of queries per forward pass.
 
-The model applies softmax to the reference logits and uses the resulting probabilities to compute a weighted mean of the reference progress values. If you pass a reference image as a query, it receives a model prediction like any other query.
-
-## GPU memory
+## GPU memory and precision
 
 Both models load their weights in FP16 and use FP16 autocast by default. The table shows peak GPU memory allocated by PyTorch during prediction on one NVIDIA B200 with a query batch size of 2. Each peak includes the resident model weights.
 
@@ -78,5 +78,7 @@ The example script reports its own peak using `torch.cuda.max_memory_allocated()
 Use `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` to select a weight directory and GPU. Set `dtype="float32"` for the original evaluation precision (FP32 weights and BF16 autocast), or `dtype="bfloat16"` for BF16 weights and autocast. Both alternatives require BF16 support. Scores can vary slightly with precision.
 
 The 27B model uses the Transformers implementation of Qwen3.5 linear attention. The original evaluation used fused kernels available with compatible versions of FLA and causal-conv1d.
+
+## Acknowledgments
 
 The model configurations and processor assets come from Qwen3-VL-4B-Instruct and Qwen3.8-27B. Their license is included in [assets/LICENSE](yuheng/assets/LICENSE).

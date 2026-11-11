@@ -6,13 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "yuheng-inference"
 version = "0.1.0"
 readme = "README.md"
-description = "Reference-conditioned visual task progress inference"
+description = "Inference for Yuheng, a vision-language model that estimates robot task progress from one reference demonstration"
 requires-python = ">=3.10"
 dependencies = [
   "torch==2.8.0", "torchvision==0.23.0", "transformers==5.5.0",
   "accelerate>=1.0,<2", "qwen-vl-utils==0.0.14", "safetensors>=0.4.3",
   "huggingface-hub>=1.3,<2", "pillow>=10"
 ]
+
+[project.urls]
+Homepage = "https://primotion-ai.github.io/paimon-eval.github.io/"
 
 [tool.setuptools]
 packages = ["yuheng"]
