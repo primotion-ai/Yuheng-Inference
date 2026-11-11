@@ -1,25 +1,32 @@
 # Yuheng-Inference
 
-根据任务指令、参考关键帧及其进度，为每张查询图预测一个进度值。支持 [Yuheng-4B](https://huggingface.co/CarlDegio/Yuheng-4B) 和 [Yuheng-27B](https://huggingface.co/CarlDegio/Yuheng-27B)。分词器、图像处理器、聊天模板及模型结构配置已随包提供；下载对应的 Yuheng 权重后即可离线推理。
+Yuheng estimates task progress from images. Give it a task instruction, a sequence of reference images with known progress values, and one or more query images. It returns one progress estimate per query, in input order.
 
-## 安装与下载
+Both [Yuheng-4B](https://huggingface.co/CarlDegio/Yuheng-4B) and [Yuheng-27B](https://huggingface.co/CarlDegio/Yuheng-27B) use the same interface. The package includes the tokenizer, image processor, chat template, and architecture configuration for each model. Once you download the weights, inference runs offline.
 
-在仓库根目录运行。需要 Python 3.10+ 和支持 BF16 的 NVIDIA GPU，请安装与驱动兼容的 CUDA 版 PyTorch 2.8.0 和 torchvision 0.23.0。
+## Install and download
+
+Use Python 3.10 or later and an NVIDIA GPU with BF16 support. Install CUDA builds of PyTorch 2.8.0 and torchvision 0.23.0 compatible with your driver. Then run the following from the repository root.
 
 ```bash
 python -m pip install .
 yuheng-download --model 4b --source official
+```
+
+For either model, choose `official` for Hugging Face or `mirror` for hf-mirror.com. For example, to download 27B from the mirror, run the following command.
+
+```bash
 yuheng-download --model 27b --source mirror
 ```
 
-`--model both` 同时下载两个版本。`--output-dir DIR` 指定父目录，默认为当前目录的 `weights/`，其中分别生成 `Yuheng-4B/` 和 `Yuheng-27B/`。加 `--dry-run` 可先查看文件数量和大小。下载脚本也可通过 `python -m yuheng.download` 调用。
+Weights go into `weights/Yuheng-4B/` or `weights/Yuheng-27B/` under the current directory. Use `--output-dir DIR` to choose another parent directory, `--model both` to download both models, or `--dry-run` to check file counts and sizes before downloading. You can also invoke the downloader with `python -m yuheng.download`.
 
-## 预测进度
+## Predict progress
 
 ```python
 from yuheng import Yuheng
 
-predictor = Yuheng("4b")  # 同一实例可用于多个任务；27B 使用 "27b"
+predictor = Yuheng("4b")  # Load once and reuse across tasks. Use "27b" for the larger model.
 scores = predictor.predict_progress(
     instruction="Close the drawer",
     reference_images=["open.png", "partially_closed.png", "closed.png"],
@@ -27,14 +34,21 @@ scores = predictor.predict_progress(
     query_images=["query_001.png", "query_002.png"],
     batch_size=2,
 )
-print(scores)  # list[float]，按两张查询图的传入顺序返回
+print(scores)  # list[float], one value per query image in input order
 ```
 
-- 图片支持本地文件路径和 PIL 图像。参考帧按进度排列，支持 2–11 张。每张查询图独立与同一组参考帧比较；可以一次传入整条轨迹的帧，`batch_size` 控制每次前向计算的查询数。
-- 参考进度用 `[0, 1]` 表示，允许相邻值相等，首末值须不同。若只给出一个任务片段（如 `[0.2, 0.35, 0.8]`），代码先按首末值归一化，模型在片段内定位，再将输出换回 `[0.2, 0.8]`。
-- 模型对各参考关键帧输出 logits，经过 softmax 后对给定进度加权求和。参考图也可传作查询图，得到的是模型预测值。
-- 可通过 `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` 指定本地模型目录和单张 GPU。默认保留 FP32 权重并使用 BF16 自动混合精度。仅权重约占 16.54 GiB（4B）或 97.19 GiB（27B），前向计算还需额外显存。显存有限时可用 `dtype="bfloat16"` 将权重占用减半，并将 `batch_size` 设为 1；该模式可能产生数值差异。
+Pass local image paths or PIL images. Provide 2–11 reference images ordered by progress. Each query is scored independently against the same references, so you can pass every frame of a trajectory in one call. `batch_size` controls how many queries run in each forward pass.
 
-27B 使用 Transformers 的 Qwen3.5 线性注意力实现。已安装兼容的 FLA 和 causal-conv1d 时，Transformers 可使用融合内核；原评测使用了这条路径。
+Assign each reference a progress value in `[0, 1]`. Adjacent values can be equal, and the last value must be greater than the first. The references can also cover part of a task. For example, with `[0.2, 0.35, 0.8]`, the model scores each query relative to that segment and returns a value in `[0.2, 0.8]`.
 
-模型配置与处理器资产来自 Qwen3-VL-4B-Instruct 和 Qwen3.8-27B，其许可随附在 [assets/LICENSE](yuheng/assets/LICENSE)。
+The model applies softmax to the reference logits and uses the resulting probabilities to compute a weighted mean of the reference progress values. If you pass a reference image as a query, it receives a model prediction like any other query.
+
+## GPU memory
+
+By default, inference keeps weights in FP32 and runs the forward pass with BF16 autocast. The weights alone take about 16.54 GiB for 4B and 97.19 GiB for 27B. Allow additional GPU memory for the forward pass.
+
+Use `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` to select a weight directory and a single GPU. If memory is limited, set `dtype="bfloat16"` when loading the model to halve weight memory, and use `batch_size=1` during prediction. BF16 weights can produce slightly different scores.
+
+The 27B model uses the Transformers implementation of Qwen3.5 linear attention. The original evaluation used fused kernels available with compatible versions of FLA and causal-conv1d.
+
+The model configurations and processor assets come from Qwen3-VL-4B-Instruct and Qwen3.8-27B. Their license is included in [assets/LICENSE](yuheng/assets/LICENSE).
