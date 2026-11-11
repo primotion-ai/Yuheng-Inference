@@ -91,9 +91,11 @@ The 27B model uses the Transformers implementation of Qwen3.5 linear attention. 
 
 ## Discussion (WeChat Group)
 
-Scan the QR code in WeChat to join the Yuheng discussion group.
+Scan either QR code in WeChat to join a Yuheng discussion group.
 
-<img src="wechat.png" alt="QR code for the Yuheng WeChat discussion group" width="320">
+| WeChat Group 2 | WeChat Group 3 |
+| :---: | :---: |
+| [<img src="assets/wechat2.png" alt="QR code for Yuheng WeChat group 2" width="260">](assets/wechat2.png) | [<img src="assets/wechat3.png" alt="QR code for Yuheng WeChat group 3" width="260">](assets/wechat3.png) |
 
 ## Acknowledgments
 
