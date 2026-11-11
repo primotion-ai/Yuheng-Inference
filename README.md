@@ -2,7 +2,14 @@
 
 Yuheng estimates task progress from images. Give it a task instruction, a sequence of reference images with known progress values, and one or more query images. It returns one progress estimate per query, in input order.
 
-Both [Yuheng-4B](https://huggingface.co/CarlDegio/Yuheng-4B) and [Yuheng-27B](https://huggingface.co/CarlDegio/Yuheng-27B) use the same interface. The package includes the tokenizer, image processor, chat template, and architecture configuration for each model. Once you download the weights, inference runs offline.
+## Models
+
+| Model | Hugging Face weights | Download size |
+| --- | --- | ---: |
+| Yuheng-4B | [CarlDegio/Yuheng-4B](https://huggingface.co/CarlDegio/Yuheng-4B) | 17.76 GB |
+| Yuheng-27B | [CarlDegio/Yuheng-27B](https://huggingface.co/CarlDegio/Yuheng-27B) | 104.35 GB |
+
+Both models use the same inference interface. The package includes each model's tokenizer, image processor, chat template, and architecture configuration. Once you download the weights, inference runs offline.
 
 ## Install and download
 
@@ -20,6 +27,20 @@ yuheng-download --model 27b --source mirror
 ```
 
 Weights go into `weights/Yuheng-4B/` or `weights/Yuheng-27B/` under the current directory. Use `--output-dir DIR` to choose another parent directory, `--model both` to download both models, or `--dry-run` to check file counts and sizes before downloading. You can also invoke the downloader with `python -m yuheng.download`.
+
+## Run the example
+
+The [example](example/) contains two 32-frame trajectories for “Grab the drink and perform a two-handed handoff.” Download the weights for the model you want to run, then run the script from the repository root.
+
+```bash
+python example_inference.py --model 4b
+# Run the same example with the larger model
+python example_inference.py --model 27b
+```
+
+The script reads the instruction from [instruction.txt](example/instruction.txt). The first line of [keyframe.txt](example/keyframe.txt) selects trajectory `1-success`. The second lists its reference frames `0, 6, 9, 15, 19, 26, 31`. These seven frames receive progress values equally spaced from 0 to 1 in keyframe order. Both `1-success` and `2-fail` are scored against that reference, including the reference frames themselves.
+
+Results are written to `outputs/Yuheng-4B.json` or `outputs/Yuheng-27B.json`. Each file records the reference frames and their assigned values, followed by the frame index, image path relative to `example/`, and predicted progress for each query. Git ignores `outputs/`. Use `--weights-dir` for weights stored outside the default location, or `--batch-size 1` to reduce memory use.
 
 ## Predict progress
 
@@ -45,7 +66,14 @@ The model applies softmax to the reference logits and uses the resulting probabi
 
 ## GPU memory
 
-Both models load their weights in FP16 and use FP16 autocast by default. The weights occupy approximately 8.27 GiB for 4B and 48.59 GiB for 27B. The forward pass needs additional memory for images and activations. Use `batch_size=1` to minimize query batch memory.
+Both models load their weights in FP16 and use FP16 autocast by default. The table shows peak GPU memory allocated by PyTorch during prediction on one NVIDIA B200 with a query batch size of 2. Each peak includes the resident model weights.
+
+| Model | FP16 weights | Handoff example peak (7 references, 568 × 320) | OOD sample peak (6 references, 640 × 480) |
+| --- | ---: | ---: | ---: |
+| Yuheng-4B | 8.27 GiB | 8.92 GiB | 9.19 GiB |
+| Yuheng-27B | 48.59 GiB | 49.43 GiB | 49.94 GiB |
+
+The example script reports its own peak using `torch.cuda.max_memory_allocated()`. Total device memory shown by `nvidia-smi` can be higher because it includes the CUDA context and reserved memory. Image resolution, reference count, and query batch size affect the peak. Use `--batch-size 1` in the example to reduce query batch memory.
 
 Use `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` to select a weight directory and GPU. Set `dtype="float32"` for the original evaluation precision (FP32 weights and BF16 autocast), or `dtype="bfloat16"` for BF16 weights and autocast. Both alternatives require BF16 support. Scores can vary slightly with precision.
 
