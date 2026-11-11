@@ -24,18 +24,19 @@ def _rgb(image: ImageInput) -> Image.Image:
 class Yuheng:
     """Load a released model once and reuse it for independent query images."""
 
-    def __init__(self, model: str = "4b", weights_dir=None, *, device="cuda:0", dtype="float32"):
+    def __init__(self, model: str = "4b", weights_dir=None, *, device="cuda:0", dtype="float16"):
         model = model.lower()
         if model not in RELEASES:
             raise ValueError("model must be '4b' or '27b'")
-        if dtype not in ("float32", "bfloat16"):
-            raise ValueError("dtype must be 'float32' or 'bfloat16'")
+        if dtype not in ("float16", "bfloat16", "float32"):
+            raise ValueError("dtype must be 'float16', 'bfloat16', or 'float32'")
+        self.autocast_dtype = torch.float16 if dtype == "float16" else torch.bfloat16
         self.device = torch.device(device)
         if self.device.type != "cuda" or not torch.cuda.is_available():
-            raise RuntimeError("Yuheng requires a CUDA GPU with BF16 support")
+            raise RuntimeError("Yuheng requires a CUDA GPU")
         with torch.cuda.device(self.device):
-            if not torch.cuda.is_bf16_supported():
-                raise RuntimeError("The selected GPU must support BF16")
+            if self.autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+                raise RuntimeError("The selected precision mode uses BF16 autocast and requires BF16 support")
         release = RELEASES[model]
         directory = Path(weights_dir) if weights_dir is not None else Path("weights") / release.repo.split("/")[1]
         files = [directory / name for name in release.filenames]
@@ -74,7 +75,7 @@ class Yuheng:
         for offset in range(0, len(query_images), batch_size):
             queries = [_rgb(image) for image in query_images[offset:offset + batch_size]]
             inputs = prepare_batch(self.processor, instruction, refs, relative, queries)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=self.autocast_dtype):
                 values = self.model(**inputs.to(self.device))
             if not torch.isfinite(values).all():
                 raise FloatingPointError("Nonfinite predicted progress")

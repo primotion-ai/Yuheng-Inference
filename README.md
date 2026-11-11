@@ -6,7 +6,7 @@ Both [Yuheng-4B](https://huggingface.co/CarlDegio/Yuheng-4B) and [Yuheng-27B](ht
 
 ## Install and download
 
-Use Python 3.10 or later and an NVIDIA GPU with BF16 support. Install CUDA builds of PyTorch 2.8.0 and torchvision 0.23.0 compatible with your driver. Then run the following from the repository root.
+Use Python 3.10 or later and an NVIDIA CUDA GPU with FP16 support. Install CUDA builds of PyTorch 2.8.0 and torchvision 0.23.0 compatible with your driver. Then run the following from the repository root.
 
 ```bash
 python -m pip install .
@@ -45,9 +45,9 @@ The model applies softmax to the reference logits and uses the resulting probabi
 
 ## GPU memory
 
-By default, inference keeps weights in FP32 and runs the forward pass with BF16 autocast. The weights alone take about 16.54 GiB for 4B and 97.19 GiB for 27B. Allow additional GPU memory for the forward pass.
+Both models load their weights in FP16 and use FP16 autocast by default. The weights occupy approximately 8.27 GiB for 4B and 48.59 GiB for 27B. The forward pass needs additional memory for images and activations. Use `batch_size=1` to minimize query batch memory.
 
-Use `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` to select a weight directory and a single GPU. If memory is limited, set `dtype="bfloat16"` when loading the model to halve weight memory, and use `batch_size=1` during prediction. BF16 weights can produce slightly different scores.
+Use `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` to select a weight directory and GPU. Set `dtype="float32"` for the original evaluation precision (FP32 weights and BF16 autocast), or `dtype="bfloat16"` for BF16 weights and autocast. Both alternatives require BF16 support. Scores can vary slightly with precision.
 
 The 27B model uses the Transformers implementation of Qwen3.5 linear attention. The original evaluation used fused kernels available with compatible versions of FLA and causal-conv1d.
 
