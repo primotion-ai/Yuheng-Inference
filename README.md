@@ -4,6 +4,8 @@
 
 **Yuheng: Toward Universal Progress Modeling through In-Context Learning and Semantic Alignment**
 
+[![Project page](https://img.shields.io/badge/Project-page-76B900)](https://primotion-ai.github.io/yuheng.github.io/)
+
 </div>
 
 Yuheng estimates how much of a robot task has been completed in a given image. Choose keyframes from one successful demonstration and assign a progress value to each milestone. Given the task instruction, those labeled keyframes, and a new image, Yuheng predicts progress on your scale.
