@@ -83,6 +83,12 @@ Use `Yuheng("27b", weights_dir="/path/to/Yuheng-27B", device="cuda:1")` to selec
 
 The 27B model uses the Transformers implementation of Qwen3.5 linear attention. The original evaluation used fused kernels available with compatible versions of FLA and causal-conv1d.
 
+## Discussion (WeChat Group)
+
+Scan the QR code in WeChat to join the Yuheng discussion group.
+
+<img src="wechat.png" alt="QR code for the Yuheng WeChat discussion group" width="320">
+
 ## Acknowledgments
 
 The model configurations and processor assets come from Qwen3-VL-4B-Instruct and Qwen3.8-27B. Their license is included in [assets/LICENSE](yuheng/assets/LICENSE).
